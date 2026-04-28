@@ -1,0 +1,968 @@
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local TextService = game:GetService("TextService")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "GenesisDump_Terminal"
+ScreenGui.Parent = (gethui and gethui()) or game:GetService("CoreGui") or Players.LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(2, 2, 2)
+MainFrame.BorderSizePixel = 1
+MainFrame.BorderColor3 = Color3.fromRGB(0, 255, 100)
+MainFrame.Position = UDim2.new(0.5, -350, 0.5, -300)
+MainFrame.Size = UDim2.new(0, 700, 0, 600)
+MainFrame.ClipsDescendants = false
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 65)
+TitleBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+TitleBar.BorderSizePixel = 1
+TitleBar.BorderColor3 = Color3.fromRGB(0, 150, 50)
+TitleBar.Parent = MainFrame
+
+
+
+local TitleText = Instance.new("TextLabel")
+TitleText.Text = [[
+  ____                     _      ____                        
+ / ___| ___ _ __   ___ ___(_)___ |  _ \ _   _ _ __ ___  _ __  
+| |  _ / _ \ '_ \ / _ \ __| / __|| | | | | | | '_ ` _ \| '_ \ 
+| |_| |  __/ | | |  __\__ \ \__ \| |_| | |_| | | | | | | |_) |
+ \____|\___|_| |_|\___|___/_|___/|____/ \__,_|_| |_| |_| .__/ 
+   >> Ft. Duddy_Duduarry                               |_|    
+]]
+TitleText.Size = UDim2.new(1, 0, 1, 0)
+TitleText.Position = UDim2.new(0, 5, 0, 0)
+TitleText.BackgroundTransparency = 1
+TitleText.TextColor3 = Color3.fromRGB(0, 255, 150)
+TitleText.Font = Enum.Font.Code
+TitleText.TextSize = 10
+TitleText.TextYAlignment = Enum.TextYAlignment.Center
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+TitleText.Parent = TitleBar
+
+local HalfHeight = (600 - 65) / 2
+
+local ConsoleFrame = Instance.new("Frame")
+ConsoleFrame.Size = UDim2.new(1, -20, 0, HalfHeight - 10)
+ConsoleFrame.Position = UDim2.new(0, 10, 0, 75)
+ConsoleFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+ConsoleFrame.BorderSizePixel = 1
+ConsoleFrame.BorderColor3 = Color3.fromRGB(0, 120, 0)
+ConsoleFrame.Parent = MainFrame
+
+local LogScroll = Instance.new("ScrollingFrame")
+LogScroll.Size = UDim2.new(1, -10, 1, -30)
+LogScroll.Position = UDim2.new(0, 5, 0, 5)
+LogScroll.BackgroundTransparency = 1
+LogScroll.BorderSizePixel = 0
+LogScroll.ScrollBarThickness = 2
+LogScroll.ScrollBarImageColor3 = Color3.fromRGB(0, 255, 100)
+LogScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+LogScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+LogScroll.Parent = ConsoleFrame
+
+local LogLayout = Instance.new("UIListLayout")
+LogLayout.Parent = LogScroll
+LogLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local CmdInput = Instance.new("TextBox")
+CmdInput.Size = UDim2.new(1, -10, 0, 20)
+CmdInput.Position = UDim2.new(0, 5, 1, -25)
+CmdInput.BackgroundTransparency = 1
+CmdInput.TextColor3 = Color3.fromRGB(0, 255, 255)
+CmdInput.Font = Enum.Font.Code
+CmdInput.TextSize = 14
+CmdInput.PlaceholderText = "> root@genesis:~$ "
+CmdInput.TextXAlignment = Enum.TextXAlignment.Left
+CmdInput.ClearTextOnFocus = false
+CmdInput.Parent = ConsoleFrame
+
+local ResultsFrame = Instance.new("ScrollingFrame")
+ResultsFrame.Size = UDim2.new(1, -20, 0, HalfHeight - 10)
+ResultsFrame.Position = UDim2.new(0, 10, 0, 75 + HalfHeight)
+ResultsFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+ResultsFrame.BorderSizePixel = 1
+ResultsFrame.BorderColor3 = Color3.fromRGB(0, 120, 0)
+ResultsFrame.ScrollBarThickness = 2
+ResultsFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 255, 100)
+ResultsFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ResultsFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ResultsFrame.Parent = MainFrame
+
+local ResultsLayout = Instance.new("UIListLayout")
+ResultsLayout.Parent = ResultsFrame
+ResultsLayout.Padding = UDim.new(0, 2)
+ResultsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local RSpyHooked = false
+
+local function Serialize(V, D, Seen)
+    if D > 3 then return "..." end
+    local T = typeof(V)
+    if T == "string" then return '"'..V:gsub('\\','\\\\'):gsub('"','\\"'):gsub('\n','\\n')..'"' end
+    if T == "boolean" or T == "number" or T == "EnumItem" then return tostring(V) end
+    if T == "function" or T == "thread" then return T end
+    if T == "Vector3" then return ("Vector3.new(%g,%g,%g)"):format(V.X,V.Y,V.Z) end
+    if T == "Vector2" then return ("Vector2.new(%g,%g)"):format(V.X,V.Y) end
+    if T == "Color3" then return ("Color3.fromRGB(%d,%d,%d)"):format(math.floor(V.R*255),math.floor(V.G*255),math.floor(V.B*255)) end
+    if T == "BrickColor" then return ('BrickColor.new("%s")'):format(V.Name) end
+    if T == "UDim2" then return ("UDim2.new(%g,%g,%g,%g)"):format(V.X.Scale,V.X.Offset,V.Y.Scale,V.Y.Offset) end
+    if T == "UDim" then return ("UDim.new(%g,%g)"):format(V.Scale,V.Offset) end
+    if T == "CFrame" then return ("CFrame.new(%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g)"):format(V:GetComponents()) end
+    if T == "Instance" then return V:GetFullName() end
+    if T ~= "table" then return "["..T.."]" end
+    if not next(V) then return "{}" end
+    if Seen[V] then return "{...}" end
+    Seen[V] = true
+    local O, Pad = {}, string.rep("  ", D + 1)
+    for K, Val in next, V do
+        O[#O+1] = Pad..tostring(K)..(typeof(Val) == "function" and "()" or " = "..Serialize(Val, D+1, Seen))
+    end
+    Seen[V] = nil
+    return "{\n"..table.concat(O, "\n").."\n"..string.rep("  ", D).."}"
+end
+
+local function ToPath(I)
+    return I:GetFullName():gsub("^([^.]+)",'game:GetService("%1")'):gsub("%.([^.]+)",'["%1"]')
+end
+
+local function GetDecompiledCode(obj)
+    local success, code = pcall(function() return decompile(obj) end)
+    if success and type(code) == "string" and code ~= "" then
+        return code
+    end
+    return "-- [ERROR] Could not decompile (Protected or Unsupported)"
+end
+
+local function AddLog(msg, logType)
+    local color = Color3.fromRGB(0, 200, 0)
+    if logType == "YOU" then color = Color3.fromRGB(0, 255, 255)
+    elseif logType == "WARN" then color = Color3.fromRGB(255, 255, 0)
+    elseif logType == "ERROR" then color = Color3.fromRGB(255, 50, 50)
+    elseif logType == "SYSTEM" then color = Color3.fromRGB(150, 150, 255)
+    elseif logType == "PROGRESS" then color = Color3.fromRGB(200, 200, 0) end
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 0, 16)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = logType == "YOU" and ("«[YOU] " .. msg .. "»") or msg
+    lbl.TextColor3 = color
+    lbl.Font = Enum.Font.Code
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = LogScroll
+    
+    task.delay(0.05, function() LogScroll.CanvasPosition = Vector2.new(0, LogLayout.AbsoluteContentSize.Y) end)
+    return lbl
+end
+
+local function ClearLogs()
+    for _, v in pairs(LogScroll:GetChildren()) do
+        if v:IsA("TextLabel") then v:Destroy() end
+    end
+end
+
+local function ClearResults()
+    for _, v in pairs(ResultsFrame:GetChildren()) do
+        if v:IsA("Frame") then v:Destroy() end
+    end
+end
+
+local function CreateTerminalLine()
+    local line = Instance.new("Frame")
+    line.Size = UDim2.new(1, 0, 0, 1)
+    line.BackgroundColor3 = Color3.fromRGB(0, 50, 0)
+    line.BorderSizePixel = 0
+    return line
+end
+
+local function CreateCodeCard(title, code, prefix)
+    local Card = Instance.new("Frame")
+    Card.Name = "CodeCard"
+    Card.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+    Card.BorderSizePixel = 0
+    Card.AutomaticSize = Enum.AutomaticSize.Y
+    Card.Size = UDim2.new(1, -10, 0, 25)
+    Card.Parent = ResultsFrame
+
+    local TopLine = CreateTerminalLine()
+    TopLine.Parent = Card
+
+    local Header = Instance.new("Frame")
+    Header.Size = UDim2.new(1, 0, 0, 25)
+    Header.BackgroundTransparency = 1
+    Header.Parent = Card
+
+    local NameLbl = Instance.new("TextLabel")
+    NameLbl.Text = string.format(" [%s] %s", prefix, title)
+    NameLbl.Size = UDim2.new(0.7, 0, 1, 0)
+    NameLbl.BackgroundTransparency = 1
+    NameLbl.TextColor3 = Color3.fromRGB(0, 255, 150)
+    NameLbl.Font = Enum.Font.Code
+    NameLbl.TextSize = 13
+    NameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    NameLbl.Parent = Header
+
+    local BtnExpand = Instance.new("TextButton")
+    BtnExpand.Text = "[+]"
+    BtnExpand.Size = UDim2.new(0, 30, 0, 25)
+    BtnExpand.Position = UDim2.new(1, -70, 0, 0)
+    BtnExpand.BackgroundTransparency = 1
+    BtnExpand.TextColor3 = Color3.fromRGB(0, 200, 255)
+    BtnExpand.Font = Enum.Font.Code
+    BtnExpand.Parent = Header
+
+    local BtnCopy = Instance.new("TextButton")
+    BtnCopy.Text = "[C]"
+    BtnCopy.Size = UDim2.new(0, 30, 0, 25)
+    BtnCopy.Position = UDim2.new(1, -35, 0, 0)
+    BtnCopy.BackgroundTransparency = 1
+    BtnCopy.TextColor3 = Color3.fromRGB(0, 200, 255)
+    BtnCopy.Font = Enum.Font.Code
+    BtnCopy.Parent = Header
+
+    local CodeBox = Instance.new("TextBox")
+    CodeBox.Size = UDim2.new(1, -10, 0, 0)
+    CodeBox.Position = UDim2.new(0, 5, 0, 25)
+    CodeBox.BackgroundColor3 = Color3.fromRGB(2, 2, 2)
+    CodeBox.BorderSizePixel = 1
+    CodeBox.BorderColor3 = Color3.fromRGB(0, 50, 0)
+    CodeBox.TextColor3 = Color3.fromRGB(180, 180, 180)
+    CodeBox.Font = Enum.Font.Code
+    CodeBox.TextSize = 12
+    CodeBox.Text = code
+    CodeBox.TextEditable = false
+    CodeBox.ClearTextOnFocus = false
+    CodeBox.TextXAlignment = Enum.TextXAlignment.Left
+    CodeBox.TextYAlignment = Enum.TextYAlignment.Top
+    CodeBox.AutomaticSize = Enum.AutomaticSize.Y
+    CodeBox.Visible = false
+    CodeBox.Parent = Card
+
+    local expanded = false
+    BtnExpand.MouseButton1Click:Connect(function()
+        expanded = not expanded
+        BtnExpand.Text = expanded and "[-]" or "[+]"
+        CodeBox.Visible = expanded
+    end)
+
+    BtnCopy.MouseButton1Click:Connect(function()
+        setclipboard(code)
+        BtnCopy.Text = "[V]"
+        task.wait(1)
+        BtnCopy.Text = "[C]"
+    end)
+end
+
+local function CreateRemoteCard(remote)
+    local Card = Instance.new("Frame")
+    Card.Name = "RemoteCard"
+    Card.BackgroundColor3 = Color3.fromRGB(15, 5, 5)
+    Card.BorderSizePixel = 0
+    Card.Size = UDim2.new(1, -10, 0, 25)
+    Card.Parent = ResultsFrame
+
+    local TopLine = CreateTerminalLine()
+    TopLine.BackgroundColor3 = Color3.fromRGB(50, 0, 0)
+    TopLine.Parent = Card
+
+    local NameLbl = Instance.new("TextLabel")
+    NameLbl.Text = string.format(" [RE] %s", remote.Name)
+    NameLbl.Size = UDim2.new(0.6, 0, 1, 0)
+    NameLbl.BackgroundTransparency = 1
+    NameLbl.TextColor3 = Color3.fromRGB(255, 100, 100)
+    NameLbl.Font = Enum.Font.Code
+    NameLbl.TextSize = 13
+    NameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    NameLbl.Parent = Card
+
+    local BtnFire = Instance.new("TextButton")
+    BtnFire.Text = "[FIRE]"
+    BtnFire.Size = UDim2.new(0, 50, 0, 25)
+    BtnFire.Position = UDim2.new(1, -95, 0, 0)
+    BtnFire.BackgroundTransparency = 1
+    BtnFire.TextColor3 = Color3.fromRGB(255, 50, 50)
+    BtnFire.Font = Enum.Font.Code
+    BtnFire.Parent = Card
+
+    local BtnCopy = Instance.new("TextButton")
+    BtnCopy.Text = "[C]"
+    BtnCopy.Size = UDim2.new(0, 30, 0, 25)
+    BtnCopy.Position = UDim2.new(1, -35, 0, 0)
+    BtnCopy.BackgroundTransparency = 1
+    BtnCopy.TextColor3 = Color3.fromRGB(255, 100, 100)
+    BtnCopy.Font = Enum.Font.Code
+    BtnCopy.Parent = Card
+
+    BtnFire.MouseButton1Click:Connect(function()
+        pcall(function()
+            if remote:IsA("RemoteEvent") then remote:FireServer()
+            elseif remote:IsA("RemoteFunction") then remote:InvokeServer() end
+            AddLog("[SYS] Fired Remote: " .. remote.Name, "SYSTEM")
+        end)
+    end)
+
+    BtnCopy.MouseButton1Click:Connect(function()
+        setclipboard(ToPath(remote))
+        BtnCopy.Text = "[V]"
+        task.wait(1)
+        BtnCopy.Text = "[C]"
+    end)
+end
+
+local function CreateInfoCard(title, desc, prefix)
+    local Card = Instance.new("Frame")
+    Card.BackgroundColor3 = Color3.fromRGB(10, 10, 5)
+    Card.BorderSizePixel = 0
+    Card.AutomaticSize = Enum.AutomaticSize.Y
+    Card.Size = UDim2.new(1, -10, 0, 25)
+    Card.Parent = ResultsFrame
+
+    CreateTerminalLine().Parent = Card
+
+    local Header = Instance.new("Frame")
+    Header.Size = UDim2.new(1, 0, 0, 25)
+    Header.BackgroundTransparency = 1
+    Header.Parent = Card
+
+    local NameLbl = Instance.new("TextLabel")
+    NameLbl.Text = string.format(" [%s] %s", prefix, title)
+    NameLbl.Size = UDim2.new(0.8, 0, 1, 0)
+    NameLbl.BackgroundTransparency = 1
+    NameLbl.TextColor3 = Color3.fromRGB(255, 200, 50)
+    NameLbl.Font = Enum.Font.Code
+    NameLbl.TextSize = 13
+    NameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    NameLbl.Parent = Header
+
+    local BtnExpand = Instance.new("TextButton")
+    BtnExpand.Text = "[+]"
+    BtnExpand.Size = UDim2.new(0, 30, 0, 25)
+    BtnExpand.Position = UDim2.new(1, -35, 0, 0)
+    BtnExpand.BackgroundTransparency = 1
+    BtnExpand.TextColor3 = Color3.fromRGB(255, 200, 50)
+    BtnExpand.Font = Enum.Font.Code
+    BtnExpand.Parent = Header
+
+    local DescLbl = Instance.new("TextLabel")
+    DescLbl.Size = UDim2.new(1, -10, 0, 0)
+    DescLbl.Position = UDim2.new(0, 5, 0, 25)
+    DescLbl.BackgroundTransparency = 1
+    DescLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    DescLbl.Font = Enum.Font.Code
+    DescLbl.TextSize = 12
+    DescLbl.Text = desc
+    DescLbl.TextXAlignment = Enum.TextXAlignment.Left
+    DescLbl.TextYAlignment = Enum.TextYAlignment.Top
+    DescLbl.AutomaticSize = Enum.AutomaticSize.Y
+    DescLbl.Visible = false
+    DescLbl.Parent = Card
+
+    local expanded = false
+    BtnExpand.MouseButton1Click:Connect(function()
+        expanded = not expanded
+        BtnExpand.Text = expanded and "[-]" or "[+]"
+        DescLbl.Visible = expanded
+    end)
+end
+
+local function BuildExplorer()
+    ClearResults()
+    local roots = {game.Workspace, game.Players, game.ReplicatedStorage, game.ServerScriptService, game.Lighting}
+    for _, root in ipairs(roots) do
+        local container = Instance.new("Frame")
+        container.BackgroundTransparency = 1
+        container.AutomaticSize = Enum.AutomaticSize.Y
+        container.Size = UDim2.new(1, 0, 0, 0)
+        container.Parent = ResultsFrame
+        
+        local layout = Instance.new("UIListLayout")
+        layout.Parent = container
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local Node = Instance.new("Frame")
+        Node.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+        Node.BorderSizePixel = 0
+        Node.Size = UDim2.new(1, 0, 0, 20)
+        Node.Parent = container
+
+        local Lbl = Instance.new("TextLabel")
+        Lbl.Text = " [+] " .. root.Name
+        Lbl.Size = UDim2.new(1, 0, 1, 0)
+        Lbl.TextColor3 = Color3.fromRGB(0, 255, 100)
+        Lbl.Font = Enum.Font.Code
+        Lbl.BackgroundTransparency = 1
+        Lbl.TextXAlignment = Enum.TextXAlignment.Left
+        Lbl.Parent = Node
+    end
+end
+
+local function CreateExplorerNode(obj, parentFrame, level)
+    local Node = Instance.new("Frame")
+    Node.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+    Node.BorderSizePixel = 0
+    Node.Size = UDim2.new(1, 0, 0, 20)
+    Node.Parent = parentFrame
+
+    local ToggleBtn = Instance.new("TextButton")
+    ToggleBtn.Text = #obj:GetChildren() > 0 and "[+]" or " "
+    ToggleBtn.Size = UDim2.new(0, 25, 1, 0)
+    ToggleBtn.Position = UDim2.new(0, level * 10, 0, 0)
+    ToggleBtn.BackgroundTransparency = 1
+    ToggleBtn.TextColor3 = Color3.fromRGB(0, 255, 100)
+    ToggleBtn.Font = Enum.Font.Code
+    ToggleBtn.Parent = Node
+
+    local NameLbl = Instance.new("TextLabel")
+    NameLbl.Text = obj.Name .. " (" .. obj.ClassName .. ")"
+    NameLbl.Size = UDim2.new(1, -30 - (level*10), 1, 0)
+    NameLbl.Position = UDim2.new(0, 30 + (level*10), 0, 0)
+    NameLbl.BackgroundTransparency = 1
+    NameLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    NameLbl.Font = Enum.Font.Code
+    NameLbl.TextSize = 12
+    NameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    NameLbl.Parent = Node
+
+    local ChildrenContainer = Instance.new("Frame")
+    ChildrenContainer.Size = UDim2.new(1, 0, 0, 0)
+    ChildrenContainer.BackgroundTransparency = 1
+    ChildrenContainer.AutomaticSize = Enum.AutomaticSize.Y
+    ChildrenContainer.Visible = false
+    ChildrenContainer.Parent = parentFrame
+    
+    local Layout = Instance.new("UIListLayout")
+    Layout.Parent = ChildrenContainer
+    Layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local loaded = false
+    local expanded = false
+
+    ToggleBtn.MouseButton1Click:Connect(function()
+        if #obj:GetChildren() == 0 then return end
+        expanded = not expanded
+        ToggleBtn.Text = expanded and "[-]" or "[+]"
+        ChildrenContainer.Visible = expanded
+
+        if expanded and not loaded then
+            loaded = true
+            for _, child in ipairs(obj:GetChildren()) do
+                CreateExplorerNode(child, ChildrenContainer, level + 1)
+            end
+        end
+    end)
+end
+
+local function BuildExplorer()
+    ClearResults()
+    local roots = {
+        game.Workspace, 
+        game.Players, 
+        game.ReplicatedStorage, 
+        game.Lighting, 
+        game.StarterGui,
+        game.CoreGui -- Note: Might fail depending on exploit permissions
+    }
+    
+    for _, root in ipairs(roots) do
+        pcall(function()
+            local container = Instance.new("Frame")
+            container.BackgroundTransparency = 1
+            container.AutomaticSize = Enum.AutomaticSize.Y
+            container.Size = UDim2.new(1, 0, 0, 0)
+            container.Parent = ResultsFrame
+            
+            local layout = Instance.new("UIListLayout")
+            layout.Parent = container
+            layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+            CreateExplorerNode(root, container, 0)
+        end)
+    end
+end
+
+
+local function ExecuteCommand(cmd)
+    AddLog(cmd, "YOU")
+
+    local args = string.split(cmd, "/")
+    local action = args[2] and args[2]:lower() or ""
+    local targetArg = args[3] and args[3]:lower() or ""
+
+    if action == "" then
+        AddLog("[ERROR] Invalid syntax.", "ERROR")
+        return
+    end
+
+    if action == "clearset1" then
+        for _, v in pairs(LogScroll:GetChildren()) do
+            if v:IsA("TextLabel") then v:Destroy() end
+        end
+        return
+
+    elseif action == "clearset2" then
+        for _, v in pairs(ResultsFrame:GetChildren()) do
+            if not v:IsA("UIListLayout") then v:Destroy() end
+        end
+        ResultsFrame.CanvasPosition = Vector2.new(0,0)
+        return
+
+    elseif action == "explorer" then
+        BuildExplorer()
+        AddLog("[SYS] Explorer loaded.", "SYSTEM")
+        return
+
+    elseif action == "selfdestruct" then
+        ScreenGui:Destroy()
+        return
+
+    elseif action == "timestop" then
+        Lighting.ClockTime = 0
+        AddLog("[SYS] Environment frozen.", "SYSTEM")
+        return
+
+    elseif action == "export" then
+        if writefile then
+            local exportStr = ""
+            for _, v in ipairs(LogScroll:GetChildren()) do
+                if v:IsA("TextLabel") then
+                    exportStr ..= v.Text .. "\n"
+                end
+            end
+            writefile("GenesisDump_Export.txt", exportStr)
+            AddLog("[SYS] Exported.", "SYSTEM")
+        else
+            AddLog("[ERROR] writefile not supported.", "ERROR")
+        end
+        return
+
+        elseif action == "cmds" then
+        local commands = {
+            ["/cmds/"] = "Displays this help menu.",
+            ["/module/"] = "Scans and dumps all ModuleScripts.",
+            ["/local/"] = "Scans and decompiles all LocalScripts.",
+            ["/remote/"] = "Lists all RemoteEvents and RemoteFunctions.",
+            ["/anticheats/"] = "Searches for suspicious anti-cheat scripts.",
+            ["/backdoor/"] = "Scans for potential backdoors (loadstring/require).",
+            ["/explorer/"] = "Opens the instance explorer.",
+            ["/timestop/"] = "Freezes environment time (ClockTime = 0).",
+            ["/bypass/"] = "Finds BindableEvents and BindableFunctions.",
+            ["/remotespy/"] = "Logs all incoming/outgoing remote traffic.",
+            ["/args/"] = "Alias for RemoteSpy.",
+            ["/constants/"] = "Retrieves constants from a script's closure.",
+            ["/upvalues/"] = "Retrieves upvalues from a script's closure.",
+            ["/playerlist/"] = "Shows player names, IDs, and account ages.",
+            ["/esp/"] = "Highlights parts containing scripts or remotes.",
+            ["/hidden/"] = "Scans for objects hidden in CoreGui.",
+            ["/heavy/"] = "Finds scripts with large amounts of code (>4kb).",
+            ["/export/"] = "Saves logs to GenesisDump_Export.txt.",
+            ["/selfdestruct/"] = "Completely removes the interface.",
+            ["/clearset1/"] = "Clears the main log history.",
+            ["/clearset2/"] = "Clears the result cards frame."
+        }
+
+        for cmdName, desc in pairs(commands) do
+            AddLog(string.format("%s - %s", cmdName, desc), "INFO")
+        end
+        return
+
+
+    elseif action == "playerlist" then
+        for _, p in ipairs(Players:GetPlayers()) do
+            AddLog(string.format("[%d] %s | %d", p.UserId, p.Name, p.AccountAge), "INFO")
+        end
+        return
+
+    elseif action == "remotespy" or action == "args" then
+        if not RSpyHooked and hookmetamethod then
+            RSpyHooked = true
+            local old
+            old = hookmetamethod(game, "__namecall", function(self,...)
+                local m = getnamecallmethod()
+                if not checkcaller() and (m=="FireServer" or m=="InvokeServer") then
+                    local remoteArgs = {...}
+                    task.spawn(function()
+                        CreateCodeCard(self.Name, Serialize(remoteArgs, 0, {}), "SPY")
+                    end)
+                    AddLog("[SPY] " .. self.Name, "SYSTEM")
+                end
+                return old(self,...)
+            end)
+            AddLog("[SYS] RemoteSpy active.", "SYSTEM")
+        end
+        return
+    end
+
+    ClearResults()
+    AddLog("[SYS] Scanning started...", "PROGRESS")
+
+    task.spawn(function()
+        local found = 0
+        local descendants = game:GetDescendants()
+
+        if gethui then
+            for _, v in ipairs(gethui():GetDescendants()) do
+                table.insert(descendants, v)
+            end
+        end
+
+        local total = #descendants
+
+        for i, obj in ipairs(descendants) do
+            if i % 150 == 0 then
+                AddLog(string.format("%s %d%%", obj.Name, math.floor((i/total)*100)), "PROGRESS")
+                task.wait()
+            end
+
+            if action == "module" and obj:IsA("ModuleScript") then
+                found += 1
+                local _, R
+                task.spawn(function() _, R = pcall(require, obj) end) task.wait()
+                local out = "-- Path: " .. ToPath(obj) .. "\n\n"
+                if typeof(R) == "table" then
+                    for k, v in next, R do out ..= tostring(k) .. " = " .. Serialize(v, 0, {}) .. "\n" end
+                else out ..= "-- returned " .. typeof(R) end
+                CreateCodeCard(obj.Name, out, "MD")
+
+            elseif action == "local" and obj:IsA("LocalScript") then
+                found += 1
+                local out = "-- Path: " .. ToPath(obj) .. "\n\n" .. GetDecompiledCode(obj)
+                CreateCodeCard(obj.Name, out, "LC")
+
+            elseif action == "remote" and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
+                found += 1
+                CreateRemoteCard(obj)
+
+            elseif action == "bypass" and (obj:IsA("BindableEvent") or obj:IsA("BindableFunction")) then
+                found += 1
+                CreateInfoCard(obj.Name, ToPath(obj), "BP")
+
+            elseif action == "constants" and (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) then
+                if getscriptclosure and debug.getconstants then
+                    local s, c = pcall(getscriptclosure, obj)
+                    if s and c then
+                        found += 1
+                        CreateCodeCard(obj.Name, Serialize(debug.getconstants(c),0,{}), "CT")
+                    end
+                end
+
+            elseif action == "upvalues" and (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) then
+                if getscriptclosure and debug.getupvalues then
+                    local s, c = pcall(getscriptclosure, obj)
+                    if s and c then
+                        found += 1
+                        CreateCodeCard(obj.Name, Serialize(debug.getupvalues(c),0,{}), "UP")
+                    end
+                end
+
+            elseif action == "esp" and obj.Parent and obj.Parent:IsA("BasePart") then
+                if obj:IsA("LocalScript") or obj:IsA("RemoteEvent") then
+                    found += 1
+                    local h = Instance.new("Highlight", obj.Parent)
+                    h.FillColor = Color3.fromRGB(255,0,0)
+                    CreateInfoCard(obj.Name, obj.Parent.Name, "ESP")
+                end
+
+            elseif action == "heavy" and (obj:IsA("LocalScript") or obj:IsA("Script")) then
+                local code = GetDecompiledCode(obj)
+                if code and #code > 4000 then
+                    found += 1
+                    CreateCodeCard(obj.Name, code, "HV")
+                end
+
+            elseif action == "hidden" then
+                if obj:IsDescendantOf(game:GetService("CoreGui")) then
+                    found += 1
+                    CreateInfoCard(obj.Name, ToPath(obj), "HD")
+                end
+
+            elseif action == "anticheats" then
+                local n = obj.Name:lower()
+                if (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) and (n:match("anti") or n:match("cheat") or n:match("detect") or n:match("bypass") or n:match("adonis") or n:match("admin") or n:match("crash")) then
+                    found += 1
+                    local out = "-- Suspicious Script: " .. ToPath(obj) .. "\n\n"
+                    if obj:IsA("LocalScript") then out ..= GetDecompiledCode(obj) end
+                    CreateInfoCard(obj.Name, out, "AC")
+                end
+
+            elseif action == "backdoor" and obj:IsA("Script") then
+                local code = GetDecompiledCode(obj)
+                if code and not code:match("ERROR") then
+                    if code:match("getfenv") or code:match("require%s*%(%d+%)") or code:match("loadstring") then
+                        found += 1
+                        CreateInfoCard(obj.Name, "-- Path: " .. ToPath(obj) .. "\n\n" .. code, "BD")
+                    end
+                end
+                
+                elseif action == "explorer" then
+                   BuildExplorer()
+                       AddLog("[SYS] Explorer loaded.", "SYSTEM")
+                     return
+
+            elseif action == "desableall" then
+                if targetArg == "locals" and obj:IsA("LocalScript") then
+                    obj.Disabled = true
+                    found += 1
+                elseif targetArg == "scripts" and obj:IsA("Script") then
+                    obj.Disabled = true
+                    found += 1
+                end
+
+            elseif action == "desable" and obj.Name:lower() == targetArg then
+                if obj:IsA("LocalScript") or obj:IsA("Script") then
+                    obj.Disabled = true
+                    found += 1
+                end
+
+            elseif obj.Name:lower() == action then
+                found += 1
+                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                    CreateRemoteCard(obj)
+                elseif obj:IsA("ModuleScript") then
+                    local _, R
+                    task.spawn(function() _, R = pcall(require, obj) end)
+                    task.wait()
+                    local out = "-- Path: " .. ToPath(obj) .. "\n\n"
+                    if typeof(R) == "table" then
+                        for k, v in next, R do out ..= tostring(k) .. " = " .. Serialize(v, 0, {}) .. "\n" end
+                    else
+                        out ..= "-- returned " .. typeof(R)
+                    end
+                    CreateCodeCard(obj.Name, out, "MD")
+                elseif obj:IsA("LocalScript") or obj:IsA("Script") then
+                    local out = "-- Path: " .. ToPath(obj) .. "\n\n" .. GetDecompiledCode(obj)
+                    CreateCodeCard(obj.Name, out, "SC")
+                end
+            end
+        end
+
+
+    elseif action == "playerlist" then
+        for _, p in ipairs(Players:GetPlayers()) do
+            AddLog(string.format("[%d] %s | %d", p.UserId, p.Name, p.AccountAge), "INFO")
+        end
+        return
+
+    elseif action == "remotespy" or action == "args" then
+        if not RSpyHooked and hookmetamethod then
+            RSpyHooked = true
+            local old
+            old = hookmetamethod(game, "__namecall", function(self,...)
+                local m = getnamecallmethod()
+                if not checkcaller() and (m=="FireServer" or m=="InvokeServer") then
+                    local remoteArgs = {...}
+                    task.spawn(function()
+                        CreateCodeCard(self.Name, Serialize(remoteArgs, 0, {}), "SPY")
+                    end)
+                    AddLog("[SPY] " .. self.Name, "SYSTEM")
+                end
+                return old(self,...)
+            end)
+            AddLog("[SYS] RemoteSpy active.", "SYSTEM")
+        end
+        return
+    end
+
+    ClearResults()
+    AddLog("[SYS] Scanning started...", "PROGRESS")
+
+    task.spawn(function()
+        local found = 0
+        local descendants = game:GetDescendants()
+
+        if gethui then
+            for _, v in ipairs(gethui():GetDescendants()) do
+                table.insert(descendants, v)
+            end
+        end
+
+        local total = #descendants
+
+        for i, obj in ipairs(descendants) do
+            if i % 150 == 0 then
+                AddLog(string.format("%s %d%%", obj.Name, math.floor((i/total)*100)), "PROGRESS")
+                task.wait()
+            end
+
+            if action == "module" and obj:IsA("ModuleScript") then
+                found += 1
+                local _, R
+                task.spawn(function() _, R = pcall(require, obj) end) task.wait()
+                local out = "-- Path: " .. ToPath(obj) .. "\n\n"
+                if typeof(R) == "table" then
+                    for k, v in next, R do out ..= tostring(k) .. " = " .. Serialize(v, 0, {}) .. "\n" end
+                else out ..= "-- returned " .. typeof(R) end
+                CreateCodeCard(obj.Name, out, "MD")
+
+            elseif action == "local" and obj:IsA("LocalScript") then
+                found += 1
+                local out = "-- Path: " .. ToPath(obj) .. "\n\n" .. GetDecompiledCode(obj)
+                CreateCodeCard(obj.Name, out, "LC")
+
+            elseif action == "remote" and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
+                found += 1
+                CreateRemoteCard(obj)
+
+            elseif action == "bypass" and (obj:IsA("BindableEvent") or obj:IsA("BindableFunction")) then
+                found += 1
+                CreateInfoCard(obj.Name, ToPath(obj), "BP")
+
+            elseif action == "constants" and (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) then
+                if getscriptclosure and debug.getconstants then
+                    local s, c = pcall(getscriptclosure, obj)
+                    if s and c then
+                        found += 1
+                        CreateCodeCard(obj.Name, Serialize(debug.getconstants(c),0,{}), "CT")
+                    end
+                end
+
+            elseif action == "upvalues" and (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) then
+                if getscriptclosure and debug.getupvalues then
+                    local s, c = pcall(getscriptclosure, obj)
+                    if s and c then
+                        found += 1
+                        CreateCodeCard(obj.Name, Serialize(debug.getupvalues(c),0,{}), "UP")
+                    end
+                end
+
+            elseif action == "esp" and obj.Parent and obj.Parent:IsA("BasePart") then
+                if obj:IsA("LocalScript") or obj:IsA("RemoteEvent") then
+                    found += 1
+                    local h = Instance.new("Highlight", obj.Parent)
+                    h.FillColor = Color3.fromRGB(255,0,0)
+                    CreateInfoCard(obj.Name, obj.Parent.Name, "ESP")
+                end
+
+            elseif action == "heavy" and (obj:IsA("LocalScript") or obj:IsA("Script")) then
+                local code = GetDecompiledCode(obj)
+                if code and #code > 4000 then
+                    found += 1
+                    CreateCodeCard(obj.Name, code, "HV")
+                end
+
+            elseif action == "hidden" then
+                if obj:IsDescendantOf(game:GetService("CoreGui")) then
+                    found += 1
+                    CreateInfoCard(obj.Name, ToPath(obj), "HD")
+                end
+
+            elseif action == "anticheats" then
+                local n = obj.Name:lower()
+                if (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) and (n:match("anti") or n:match("cheat") or n:match("detect") or n:match("bypass") or n:match("adonis") or n:match("admin") or n:match("crash")) then
+                    found += 1
+                    local out = "-- Suspicious Script: " .. ToPath(obj) .. "\n\n"
+                    if obj:IsA("LocalScript") then out ..= GetDecompiledCode(obj) end
+                    CreateInfoCard(obj.Name, out, "AC")
+                end
+
+            elseif action == "backdoor" and obj:IsA("Script") then
+                local code = GetDecompiledCode(obj)
+                if code and not code:match("ERROR") then
+                    if code:match("getfenv") or code:match("require%s*%(%d+%)") or code:match("loadstring") then
+                        found += 1
+                        CreateInfoCard(obj.Name, "-- Path: " .. ToPath(obj) .. "\n\n" .. code, "BD")
+                    end
+                end
+                
+                elseif action == "explorer" then
+                   BuildExplorer()
+                       AddLog("[SYS] Explorer loaded.", "SYSTEM")
+                     return
+
+            elseif action == "desableall" then
+                if targetArg == "locals" and obj:IsA("LocalScript") then
+                    obj.Disabled = true
+                    found += 1
+                elseif targetArg == "scripts" and obj:IsA("Script") then
+                    obj.Disabled = true
+                    found += 1
+                end
+
+            elseif action == "desable" and obj.Name:lower() == targetArg then
+                if obj:IsA("LocalScript") or obj:IsA("Script") then
+                    obj.Disabled = true
+                    found += 1
+                end
+
+            elseif obj.Name:lower() == action then
+                found += 1
+                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                    CreateRemoteCard(obj)
+                elseif obj:IsA("ModuleScript") then
+                    local _, R
+                    task.spawn(function() _, R = pcall(require, obj) end)
+                    task.wait()
+                    local out = "-- Path: " .. ToPath(obj) .. "\n\n"
+                    if typeof(R) == "table" then
+                        for k, v in next, R do out ..= tostring(k) .. " = " .. Serialize(v, 0, {}) .. "\n" end
+                    else
+                        out ..= "-- returned " .. typeof(R)
+                    end
+                    CreateCodeCard(obj.Name, out, "MD")
+                elseif obj:IsA("LocalScript") or obj:IsA("Script") then
+                    local out = "-- Path: " .. ToPath(obj) .. "\n\n" .. GetDecompiledCode(obj)
+                    CreateCodeCard(obj.Name, out, "SC")
+                end
+            end
+        end
+
+        AddLog("[SYS] Done: "..found, "PROGRESS")
+    end)
+end
+
+
+CmdInput.FocusLost:Connect(function(enterPressed)
+    if enterPressed and CmdInput.Text ~= "" then
+        local text = CmdInput.Text
+        CmdInput.Text = ""
+        ExecuteCommand(text)
+    end
+end)
+
+local bootASCII = [[
+               ,
+             _,,)\.~,,._
+             (()`  ``)\))),,_
+              |     \ ''((\)))),,_          ____
+              |6`   |   ''((\())) "-.____.-"    `-.-,
+              |    .'\    ''))))'                  \)))
+              |   |   `.     ''                     ((((
+              \, _)     \/                          |))))
+               `'        |                          (((((
+                         \                  |       ))))))
+                          `|    |           ,\     /((((((
+                           |   / `-.______.<  \   |  )))))
+                           |   |  /         `. \  \  ((((
+                           |  / \ |           `.\  | (((
+                           \  | | |             )| |  ))
+                            | | | |             || |  '
+
+     __        _______ _     ____ ___  __  __ _____ _ 
+     \ \      / / ____| |   / ___/ _ \|  \/  | ____| |
+      \ \ /\ / /|  _| | |  | |  | | | | |\/| |  _| | |
+       \ V  V / | |___| |__| |__| |_| | |  | | |___|_|
+        \_/\_/  |_____|_____\____\___/|_|  |_|_____(_)
+]]
+
+for _, line in ipairs(string.split(bootASCII, "\n")) do
+    if line ~= "" then
+        AddLog(line, "DEFAULT")
+        task.wait(0.01)
+    end
+end
+
+local msg1 = AddLog("System Boot: GenesisDump v2.0", "SYSTEM")
+msg1.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+AddLog("Type '!n dump /cmds/' to see all commands.", "WARN")
+
