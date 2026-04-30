@@ -4,6 +4,10 @@ local Players = game:GetService("Players")
 local TextService = game:GetService("TextService")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
+local DecompiledCache = {}
+local MutedRemotes = {}
+local NetworkMuteHooked = false
+
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "GenesisDump_Terminal"
@@ -492,6 +496,10 @@ local function BuildExplorer()
 end
 
 
+local DecompiledCache = {}
+local MutedRemotes = {}
+local NetworkMuteHooked = false
+
 local function ExecuteCommand(cmd)
     AddLog(cmd, "YOU")
 
@@ -505,15 +513,42 @@ local function ExecuteCommand(cmd)
     end
 
     if action == "clearset1" then
-        for _, v in pairs(LogScroll:GetChildren()) do
-            if v:IsA("TextLabel") then v:Destroy() end
-        end
+        ClearLogs()
+        task.wait(0.5)
+        local bootASCII = [[
+,
+_,,)\.~,,._
+(()`  ``)\))),,_
+ |     \ ''((\)))),,_ 
+ |6`   |   ''((\())) "-.____.-"~~--..__
+ |    .'\    ''))))'                 ~~--..__
+ |   |   `.     ''                   .__        _______ _     ____ ___  __  __ _____ _
+ \, _)     \/                  ~~\ \      / / ____| |   / ___/ _ \|  \/  | ____| |
+  `'        |                    .\ \ /\ / /|  _| | |  | |  | | | | |\/| |  _| | |
+            \                 .~~~~ \ V  V / | |___| |__| |__| |_| | |  | | |___|_|
+             `|    |      .~~~~~     \_/\_/  |_____|_____\____\___/|_|  |_|_____(_) !
+              |   / `-.__.~~~~
+              |   |  /  ~~~
+              |  / \ |
+              \  | | |
+               | | | |
+]]
+
+for _, line in ipairs(string.split(bootASCII, "\n")) do
+    if line ~= "" then
+        AddLog(line, "DEFAULT")
+        task.wait(0.01)
+    end
+end
+
+local msg1 = AddLog("System Boot: GenesisDump v2.0", "SYSTEM")
+msg1.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+AddLog("Type '!n dump /cmds/' to see all commands.", "WARN")
         return
 
     elseif action == "clearset2" then
-        for _, v in pairs(ResultsFrame:GetChildren()) do
-            if not v:IsA("UIListLayout") then v:Destroy() end
-        end
+        ClearResults()
         ResultsFrame.CanvasPosition = Vector2.new(0,0)
         return
 
@@ -546,29 +581,30 @@ local function ExecuteCommand(cmd)
         end
         return
 
-        elseif action == "cmds" then
+    elseif action == "cmds" then
         local commands = {
             ["/cmds/"] = "Displays this help menu.",
             ["/module/"] = "Scans and dumps all ModuleScripts.",
             ["/local/"] = "Scans and decompiles all LocalScripts.",
             ["/remote/"] = "Lists all RemoteEvents and RemoteFunctions.",
             ["/anticheats/"] = "Searches for suspicious anti-cheat scripts.",
-            ["/backdoor/"] = "Scans for potential backdoors (loadstring/require).",
+            ["/backdoor/"] = "Scans for potential backdoors.",
             ["/explorer/"] = "Opens the instance explorer.",
-            ["/timestop/"] = "Freezes environment time (ClockTime = 0).",
-            ["/bypass/"] = "Finds BindableEvents and BindableFunctions.",
-            ["/remotespy/"] = "Logs all incoming/outgoing remote traffic.",
-            ["/args/"] = "Alias for RemoteSpy.",
-            ["/constants/"] = "Retrieves constants from a script's closure.",
-            ["/upvalues/"] = "Retrieves upvalues from a script's closure.",
-            ["/playerlist/"] = "Shows player names, IDs, and account ages.",
-            ["/esp/"] = "Highlights parts containing scripts or remotes.",
-            ["/hidden/"] = "Scans for objects hidden in CoreGui.",
-            ["/heavy/"] = "Finds scripts with large amounts of code (>4kb).",
-            ["/export/"] = "Saves logs to GenesisDump_Export.txt.",
-            ["/selfdestruct/"] = "Completely removes the interface.",
-            ["/clearset1/"] = "Clears the main log history.",
-            ["/clearset2/"] = "Clears the result cards frame."
+            ["/timestop/"] = "Freezes environment time.",
+            ["/bypass/"] = "Finds Bindables.",
+            ["/remotespy/"] = "Logs remote traffic.",
+            ["/networkmute/name/"] = "Blocks a remote.",
+            ["/grep/keyword/"] = "Searches code keyword.",
+            ["/constants/"] = "Gets constants.",
+            ["/upvalues/"] = "Gets upvalues.",
+            ["/playerlist/"] = "Shows players.",
+            ["/esp/"] = "Highlights objects.",
+            ["/hidden/"] = "Scans CoreGui.",
+            ["/heavy/"] = "Finds large scripts.",
+            ["/export/"] = "Exports logs.",
+            ["/selfdestruct/"] = "Destroys GUI.",
+            ["/clearset1/"] = "Clears logs.",
+            ["/clearset2/"] = "Clears results."
         }
 
         for cmdName, desc in pairs(commands) do
@@ -576,34 +612,74 @@ local function ExecuteCommand(cmd)
         end
         return
 
-
     elseif action == "playerlist" then
         for _, p in ipairs(Players:GetPlayers()) do
             AddLog(string.format("[%d] %s | %d", p.UserId, p.Name, p.AccountAge), "INFO")
         end
         return
 
+    elseif action == "networkmute" then
+        if targetArg == "" then
+            AddLog("[ERROR] Usage: /networkmute/name", "ERROR")
+            return
+        end
+
+        MutedRemotes[targetArg] = true
+        AddLog("[MUTED] " .. targetArg, "WARN")
+
+        if not NetworkMuteHooked and hookmetamethod then
+            NetworkMuteHooked = true
+
+            local old
+            old = hookmetamethod(game, "__namecall", function(self, ...)
+                local m = getnamecallmethod()
+
+                if not checkcaller()
+                    and (m == "FireServer" or m == "InvokeServer")
+                    and MutedRemotes[self.Name]
+                then
+                    return nil
+                end
+
+                return old(self, ...)
+            end)
+        end
+
+        return
+
     elseif action == "remotespy" or action == "args" then
         if not RSpyHooked and hookmetamethod then
             RSpyHooked = true
+
             local old
-            old = hookmetamethod(game, "__namecall", function(self,...)
+            old = hookmetamethod(game, "__namecall", function(self, ...)
                 local m = getnamecallmethod()
-                if not checkcaller() and (m=="FireServer" or m=="InvokeServer") then
+
+                if not checkcaller() and (m == "FireServer" or m == "InvokeServer") then
                     local remoteArgs = {...}
+
                     task.spawn(function()
-                        CreateCodeCard(self.Name, Serialize(remoteArgs, 0, {}), "SPY")
+                        CreateCodeCard(
+                            self.Name,
+                            Serialize(remoteArgs, 0, {}),
+                            "SPY"
+                        )
                     end)
+
                     AddLog("[SPY] " .. self.Name, "SYSTEM")
                 end
-                return old(self,...)
+
+                return old(self, ...)
             end)
+
             AddLog("[SYS] RemoteSpy active.", "SYSTEM")
         end
+
         return
     end
 
     ClearResults()
+
     AddLog("[SYS] Scanning started...", "PROGRESS")
 
     task.spawn(function()
@@ -620,61 +696,124 @@ local function ExecuteCommand(cmd)
 
         for i, obj in ipairs(descendants) do
             if i % 150 == 0 then
-                AddLog(string.format("%s %d%%", obj.Name, math.floor((i/total)*100)), "PROGRESS")
+                AddLog(string.format("%s %d%%", obj.Name, math.floor((i / total) * 100)), "PROGRESS")
                 task.wait()
             end
 
-            if action == "module" and obj:IsA("ModuleScript") then
+            if action == "grep"
+                and (obj:IsA("LocalScript") or obj:IsA("ModuleScript"))
+            then
+                local code = DecompiledCache[obj] or GetDecompiledCode(obj)
+
+                DecompiledCache[obj] = code
+
+                if code:lower():find(targetArg) then
+                    found += 1
+                    CreateCodeCard(obj.Name, code, "GREP")
+                end
+
+            elseif action == "module" and obj:IsA("ModuleScript") then
                 found += 1
+
                 local _, R
-                task.spawn(function() _, R = pcall(require, obj) end) task.wait()
-                local out = "-- Path: " .. ToPath(obj) .. "\n\n"
+
+                task.spawn(function()
+                    _, R = pcall(require, obj)
+                end)
+
+                task.wait()
+
+                local out = "-- Path: "
+                    .. ToPath(obj)
+                    .. "\n\n"
+
                 if typeof(R) == "table" then
-                    for k, v in next, R do out ..= tostring(k) .. " = " .. Serialize(v, 0, {}) .. "\n" end
-                else out ..= "-- returned " .. typeof(R) end
+                    for k, v in next, R do
+                        out ..= tostring(k)
+                            .. " = "
+                            .. Serialize(v, 0, {})
+                            .. "\n"
+                    end
+                else
+                    out ..= "-- returned " .. typeof(R)
+                end
+
                 CreateCodeCard(obj.Name, out, "MD")
 
             elseif action == "local" and obj:IsA("LocalScript") then
                 found += 1
-                local out = "-- Path: " .. ToPath(obj) .. "\n\n" .. GetDecompiledCode(obj)
+
+                local out = "-- Path: "
+                    .. ToPath(obj)
+                    .. "\n\n"
+                    .. GetDecompiledCode(obj)
+
                 CreateCodeCard(obj.Name, out, "LC")
 
-            elseif action == "remote" and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
+            elseif action == "remote"
+                and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction"))
+            then
                 found += 1
                 CreateRemoteCard(obj)
 
-            elseif action == "bypass" and (obj:IsA("BindableEvent") or obj:IsA("BindableFunction")) then
+            elseif action == "bypass"
+                and (obj:IsA("BindableEvent") or obj:IsA("BindableFunction"))
+            then
                 found += 1
                 CreateInfoCard(obj.Name, ToPath(obj), "BP")
 
-            elseif action == "constants" and (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) then
+            elseif action == "constants"
+                and (obj:IsA("LocalScript") or obj:IsA("ModuleScript"))
+            then
                 if getscriptclosure and debug.getconstants then
                     local s, c = pcall(getscriptclosure, obj)
+
                     if s and c then
                         found += 1
-                        CreateCodeCard(obj.Name, Serialize(debug.getconstants(c),0,{}), "CT")
+
+                        CreateCodeCard(
+                            obj.Name,
+                            Serialize(debug.getconstants(c), 0, {}),
+                            "CT"
+                        )
                     end
                 end
 
-            elseif action == "upvalues" and (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) then
+            elseif action == "upvalues"
+                and (obj:IsA("LocalScript") or obj:IsA("ModuleScript"))
+            then
                 if getscriptclosure and debug.getupvalues then
                     local s, c = pcall(getscriptclosure, obj)
+
                     if s and c then
                         found += 1
-                        CreateCodeCard(obj.Name, Serialize(debug.getupvalues(c),0,{}), "UP")
+
+                        CreateCodeCard(
+                            obj.Name,
+                            Serialize(debug.getupvalues(c), 0, {}),
+                            "UP"
+                        )
                     end
                 end
 
-            elseif action == "esp" and obj.Parent and obj.Parent:IsA("BasePart") then
+            elseif action == "esp"
+                and obj.Parent
+                and obj.Parent:IsA("BasePart")
+            then
                 if obj:IsA("LocalScript") or obj:IsA("RemoteEvent") then
                     found += 1
+
                     local h = Instance.new("Highlight", obj.Parent)
                     h.FillColor = Color3.fromRGB(255,0,0)
+
                     CreateInfoCard(obj.Name, obj.Parent.Name, "ESP")
                 end
 
-            elseif action == "heavy" and (obj:IsA("LocalScript") or obj:IsA("Script")) then
+            elseif action == "heavy"
+                and (obj:IsA("LocalScript") or obj:IsA("Script"))
+            then
                 local code = GetDecompiledCode(obj)
+
                 if code and #code > 4000 then
                     found += 1
                     CreateCodeCard(obj.Name, code, "HV")
@@ -688,37 +827,65 @@ local function ExecuteCommand(cmd)
 
             elseif action == "anticheats" then
                 local n = obj.Name:lower()
-                if (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) and (n:match("anti") or n:match("cheat") or n:match("detect") or n:match("bypass") or n:match("adonis") or n:match("admin") or n:match("crash")) then
+
+                if (obj:IsA("LocalScript") or obj:IsA("ModuleScript"))
+                    and (
+                        n:match("anti")
+                        or n:match("cheat")
+                        or n:match("detect")
+                        or n:match("bypass")
+                        or n:match("adonis")
+                        or n:match("admin")
+                        or n:match("crash")
+                    )
+                then
                     found += 1
-                    local out = "-- Suspicious Script: " .. ToPath(obj) .. "\n\n"
-                    if obj:IsA("LocalScript") then out ..= GetDecompiledCode(obj) end
+
+                    local out = "-- Suspicious Script: "
+                        .. ToPath(obj)
+                        .. "\n\n"
+
+                    if obj:IsA("LocalScript") then
+                        out ..= GetDecompiledCode(obj)
+                    end
+
                     CreateInfoCard(obj.Name, out, "AC")
                 end
 
             elseif action == "backdoor" and obj:IsA("Script") then
                 local code = GetDecompiledCode(obj)
+
                 if code and not code:match("ERROR") then
-                    if code:match("getfenv") or code:match("require%s*%(%d+%)") or code:match("loadstring") then
+                    if code:match("getfenv")
+                        or code:match("require%s*%(%d+%)")
+                        or code:match("loadstring")
+                    then
                         found += 1
-                        CreateInfoCard(obj.Name, "-- Path: " .. ToPath(obj) .. "\n\n" .. code, "BD")
+
+                        CreateInfoCard(
+                            obj.Name,
+                            "-- Path: "
+                                .. ToPath(obj)
+                                .. "\n\n"
+                                .. code,
+                            "BD"
+                        )
                     end
                 end
-                
-                elseif action == "explorer" then
-                   BuildExplorer()
-                       AddLog("[SYS] Explorer loaded.", "SYSTEM")
-                     return
 
             elseif action == "desableall" then
                 if targetArg == "locals" and obj:IsA("LocalScript") then
                     obj.Disabled = true
                     found += 1
+
                 elseif targetArg == "scripts" and obj:IsA("Script") then
                     obj.Disabled = true
                     found += 1
                 end
 
-            elseif action == "desable" and obj.Name:lower() == targetArg then
+            elseif action == "desable"
+                and obj.Name:lower() == targetArg
+            then
                 if obj:IsA("LocalScript") or obj:IsA("Script") then
                     obj.Disabled = true
                     found += 1
@@ -726,199 +893,52 @@ local function ExecuteCommand(cmd)
 
             elseif obj.Name:lower() == action then
                 found += 1
+
                 if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
                     CreateRemoteCard(obj)
+
                 elseif obj:IsA("ModuleScript") then
                     local _, R
-                    task.spawn(function() _, R = pcall(require, obj) end)
-                    task.wait()
-                    local out = "-- Path: " .. ToPath(obj) .. "\n\n"
-                    if typeof(R) == "table" then
-                        for k, v in next, R do out ..= tostring(k) .. " = " .. Serialize(v, 0, {}) .. "\n" end
-                    else
-                        out ..= "-- returned " .. typeof(R)
-                    end
-                    CreateCodeCard(obj.Name, out, "MD")
-                elseif obj:IsA("LocalScript") or obj:IsA("Script") then
-                    local out = "-- Path: " .. ToPath(obj) .. "\n\n" .. GetDecompiledCode(obj)
-                    CreateCodeCard(obj.Name, out, "SC")
-                end
-            end
-        end
 
-
-    elseif action == "playerlist" then
-        for _, p in ipairs(Players:GetPlayers()) do
-            AddLog(string.format("[%d] %s | %d", p.UserId, p.Name, p.AccountAge), "INFO")
-        end
-        return
-
-    elseif action == "remotespy" or action == "args" then
-        if not RSpyHooked and hookmetamethod then
-            RSpyHooked = true
-            local old
-            old = hookmetamethod(game, "__namecall", function(self,...)
-                local m = getnamecallmethod()
-                if not checkcaller() and (m=="FireServer" or m=="InvokeServer") then
-                    local remoteArgs = {...}
                     task.spawn(function()
-                        CreateCodeCard(self.Name, Serialize(remoteArgs, 0, {}), "SPY")
+                        _, R = pcall(require, obj)
                     end)
-                    AddLog("[SPY] " .. self.Name, "SYSTEM")
-                end
-                return old(self,...)
-            end)
-            AddLog("[SYS] RemoteSpy active.", "SYSTEM")
-        end
-        return
-    end
 
-    ClearResults()
-    AddLog("[SYS] Scanning started...", "PROGRESS")
-
-    task.spawn(function()
-        local found = 0
-        local descendants = game:GetDescendants()
-
-        if gethui then
-            for _, v in ipairs(gethui():GetDescendants()) do
-                table.insert(descendants, v)
-            end
-        end
-
-        local total = #descendants
-
-        for i, obj in ipairs(descendants) do
-            if i % 150 == 0 then
-                AddLog(string.format("%s %d%%", obj.Name, math.floor((i/total)*100)), "PROGRESS")
-                task.wait()
-            end
-
-            if action == "module" and obj:IsA("ModuleScript") then
-                found += 1
-                local _, R
-                task.spawn(function() _, R = pcall(require, obj) end) task.wait()
-                local out = "-- Path: " .. ToPath(obj) .. "\n\n"
-                if typeof(R) == "table" then
-                    for k, v in next, R do out ..= tostring(k) .. " = " .. Serialize(v, 0, {}) .. "\n" end
-                else out ..= "-- returned " .. typeof(R) end
-                CreateCodeCard(obj.Name, out, "MD")
-
-            elseif action == "local" and obj:IsA("LocalScript") then
-                found += 1
-                local out = "-- Path: " .. ToPath(obj) .. "\n\n" .. GetDecompiledCode(obj)
-                CreateCodeCard(obj.Name, out, "LC")
-
-            elseif action == "remote" and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
-                found += 1
-                CreateRemoteCard(obj)
-
-            elseif action == "bypass" and (obj:IsA("BindableEvent") or obj:IsA("BindableFunction")) then
-                found += 1
-                CreateInfoCard(obj.Name, ToPath(obj), "BP")
-
-            elseif action == "constants" and (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) then
-                if getscriptclosure and debug.getconstants then
-                    local s, c = pcall(getscriptclosure, obj)
-                    if s and c then
-                        found += 1
-                        CreateCodeCard(obj.Name, Serialize(debug.getconstants(c),0,{}), "CT")
-                    end
-                end
-
-            elseif action == "upvalues" and (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) then
-                if getscriptclosure and debug.getupvalues then
-                    local s, c = pcall(getscriptclosure, obj)
-                    if s and c then
-                        found += 1
-                        CreateCodeCard(obj.Name, Serialize(debug.getupvalues(c),0,{}), "UP")
-                    end
-                end
-
-            elseif action == "esp" and obj.Parent and obj.Parent:IsA("BasePart") then
-                if obj:IsA("LocalScript") or obj:IsA("RemoteEvent") then
-                    found += 1
-                    local h = Instance.new("Highlight", obj.Parent)
-                    h.FillColor = Color3.fromRGB(255,0,0)
-                    CreateInfoCard(obj.Name, obj.Parent.Name, "ESP")
-                end
-
-            elseif action == "heavy" and (obj:IsA("LocalScript") or obj:IsA("Script")) then
-                local code = GetDecompiledCode(obj)
-                if code and #code > 4000 then
-                    found += 1
-                    CreateCodeCard(obj.Name, code, "HV")
-                end
-
-            elseif action == "hidden" then
-                if obj:IsDescendantOf(game:GetService("CoreGui")) then
-                    found += 1
-                    CreateInfoCard(obj.Name, ToPath(obj), "HD")
-                end
-
-            elseif action == "anticheats" then
-                local n = obj.Name:lower()
-                if (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) and (n:match("anti") or n:match("cheat") or n:match("detect") or n:match("bypass") or n:match("adonis") or n:match("admin") or n:match("crash")) then
-                    found += 1
-                    local out = "-- Suspicious Script: " .. ToPath(obj) .. "\n\n"
-                    if obj:IsA("LocalScript") then out ..= GetDecompiledCode(obj) end
-                    CreateInfoCard(obj.Name, out, "AC")
-                end
-
-            elseif action == "backdoor" and obj:IsA("Script") then
-                local code = GetDecompiledCode(obj)
-                if code and not code:match("ERROR") then
-                    if code:match("getfenv") or code:match("require%s*%(%d+%)") or code:match("loadstring") then
-                        found += 1
-                        CreateInfoCard(obj.Name, "-- Path: " .. ToPath(obj) .. "\n\n" .. code, "BD")
-                    end
-                end
-                
-                elseif action == "explorer" then
-                   BuildExplorer()
-                       AddLog("[SYS] Explorer loaded.", "SYSTEM")
-                     return
-
-            elseif action == "desableall" then
-                if targetArg == "locals" and obj:IsA("LocalScript") then
-                    obj.Disabled = true
-                    found += 1
-                elseif targetArg == "scripts" and obj:IsA("Script") then
-                    obj.Disabled = true
-                    found += 1
-                end
-
-            elseif action == "desable" and obj.Name:lower() == targetArg then
-                if obj:IsA("LocalScript") or obj:IsA("Script") then
-                    obj.Disabled = true
-                    found += 1
-                end
-
-            elseif obj.Name:lower() == action then
-                found += 1
-                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-                    CreateRemoteCard(obj)
-                elseif obj:IsA("ModuleScript") then
-                    local _, R
-                    task.spawn(function() _, R = pcall(require, obj) end)
                     task.wait()
-                    local out = "-- Path: " .. ToPath(obj) .. "\n\n"
+
+                    local out = "-- Path: "
+                        .. ToPath(obj)
+                        .. "\n\n"
+
                     if typeof(R) == "table" then
-                        for k, v in next, R do out ..= tostring(k) .. " = " .. Serialize(v, 0, {}) .. "\n" end
+                        for k, v in next, R do
+                            out ..= tostring(k)
+                                .. " = "
+                                .. Serialize(v, 0, {})
+                                .. "\n"
+                        end
                     else
                         out ..= "-- returned " .. typeof(R)
                     end
+
                     CreateCodeCard(obj.Name, out, "MD")
+
                 elseif obj:IsA("LocalScript") or obj:IsA("Script") then
-                    local out = "-- Path: " .. ToPath(obj) .. "\n\n" .. GetDecompiledCode(obj)
+                    local out = "-- Path: "
+                        .. ToPath(obj)
+                        .. "\n\n"
+                        .. GetDecompiledCode(obj)
+
                     CreateCodeCard(obj.Name, out, "SC")
                 end
             end
         end
 
-        AddLog("[SYS] Done: "..found, "PROGRESS")
+        AddLog("[SYS] Done: " .. found, "PROGRESS")
     end)
 end
+
+
 
 
 CmdInput.FocusLost:Connect(function(enterPressed)
@@ -930,28 +950,22 @@ CmdInput.FocusLost:Connect(function(enterPressed)
 end)
 
 local bootASCII = [[
-               ,
-             _,,)\.~,,._
-             (()`  ``)\))),,_
-              |     \ ''((\)))),,_          ____
-              |6`   |   ''((\())) "-.____.-"    `-.-,
-              |    .'\    ''))))'                  \)))
-              |   |   `.     ''                     ((((
-              \, _)     \/                          |))))
-               `'        |                          (((((
-                         \                  |       ))))))
-                          `|    |           ,\     /((((((
-                           |   / `-.______.<  \   |  )))))
-                           |   |  /         `. \  \  ((((
-                           |  / \ |           `.\  | (((
-                           \  | | |             )| |  ))
-                            | | | |             || |  '
-
-     __        _______ _     ____ ___  __  __ _____ _ 
-     \ \      / / ____| |   / ___/ _ \|  \/  | ____| |
-      \ \ /\ / /|  _| | |  | |  | | | | |\/| |  _| | |
-       \ V  V / | |___| |__| |__| |_| | |  | | |___|_|
-        \_/\_/  |_____|_____\____\___/|_|  |_|_____(_)
+,
+_,,)\.~,,._
+(()`  ``)\))),,_
+ |     \ ''((\)))),,_ 
+ |6`   |   ''((\())) "-.____.-"~~--..__
+ |    .'\    ''))))'                 ~~--..__
+ |   |   `.     ''                   .__        _______ _     ____ ___  __  __ _____ _
+ \, _)     \/                  ~~\ \      / / ____| |   / ___/ _ \|  \/  | ____| |
+  `'        |                    .\ \ /\ / /|  _| | |  | |  | | | | |\/| |  _| | |
+            \                 .~~~~ \ V  V / | |___| |__| |__| |_| | |  | | |___|_|
+             `|    |      .~~~~~     \_/\_/  |_____|_____\____\___/|_|  |_|_____(_) !
+              |   / `-.__.~~~~
+              |   |  /  ~~~
+              |  / \ |
+              \  | | |
+               | | | |
 ]]
 
 for _, line in ipairs(string.split(bootASCII, "\n")) do
